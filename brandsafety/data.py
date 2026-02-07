@@ -4,13 +4,19 @@ import pandas as pd
 
 def load_table(path):
     ext = os.path.splitext(path)[1].lower()
-    if ext in [".parquet", ".pq"]:
-        return pd.read_parquet(path)
-    if ext == ".csv":
+    if ext in [".csv"]:
         return pd.read_csv(path)
-    raise ValueError(f"Unsupported file extension: {ext}. Use .parquet or .csv")
+    if ext in [".parquet", ".pq"]:
+        try:
+            return pd.read_parquet(path)
+        except Exception as e:
+            raise RuntimeError(
+                "Failed to read parquet. Install parquet extra: pip install 'brandsafety-svm[parquet]' "
+                "or 'pip install -e .[parquet]' from repo."
+            ) from e
+    raise ValueError(f"Unsupported file extension: {ext}. Use .csv or .parquet")
 
-def extract_embeddings(df, *, embedding_prefix = None, embedding_col = None):
+def extract_embeddings(df, *, embedding_prefix = "emb_", embedding_col = None):
     if embedding_col is not None:
         if embedding_col not in df.columns:
             raise ValueError(f"embedding_col='{embedding_col}' not found in df")
@@ -19,7 +25,7 @@ def extract_embeddings(df, *, embedding_prefix = None, embedding_col = None):
         return X
 
     if embedding_prefix is None:
-        raise ValueError("Provide embedding_prefix (for wide cols) or embedding_col (for list/array col).")
+        raise ValueError("Provide embedding_prefix (wide cols) or embedding_col (list/array col).")
 
     cols = [c for c in df.columns if str(c).startswith(embedding_prefix)]
     if not cols:

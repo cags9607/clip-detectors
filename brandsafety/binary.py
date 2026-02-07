@@ -46,7 +46,7 @@ def train_binary(
     target_precision = 0.80,
     prefer = "max_recall",
     seed = 42,
-    verbose = True
+    verbose = False
 ):
     y_train = np.asarray(y_train).astype(int)
     y_cal   = np.asarray(y_cal).astype(int)
@@ -64,7 +64,6 @@ def train_binary(
     p_cal  = calibrated.predict_proba(X_cal)[:, 1]
     p_test = calibrated.predict_proba(X_test)[:, 1]
 
-    # threshold chosen on CAL
     thr, P_cal, R_cal, F1_cal, how = threshold_for_precision(
         y_cal, p_cal, target_precision = target_precision, prefer = prefer
     )

@@ -1,7 +1,7 @@
 import joblib
 
-def save_artifact(obj, path):
+def save(obj, path):
     joblib.dump(obj, path)
 
-def load_artifact(path):
+def load(path):
     return joblib.load(path)

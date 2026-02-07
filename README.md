@@ -1,61 +1,108 @@
 # brandsafety-svm
 
-Minimal training + inference repo for brand-safety image classifiers using **precomputed embeddings** and an **SVM + calibration** pipeline.
+A tiny **Python package** (pip-installable) to train and run brand-safety image classifiers using **precomputed embeddings** with an **SVM + probability calibration** pipeline.
 
 Supports:
 - **Binary** training (unsafe vs safe), with a stored threshold for a target precision.
 - **Multiclass (mutually exclusive)** training via **One-vs-Rest (OvR)** calibrated models.
 
-Assumes you upload your own labeled dataset containing:
-- `sample_bucket` (e.g., `anchor_unbiased`, `mined_keywords`, `diversity_long_tail`)
-- `match_reason` (string; diagnostic only)
-- `label` (string class, mutually exclusive)
-- embeddings:
-  - Option A: wide columns `emb_0..emb_d` (recommended)
-  - Option B: single column `embedding` with list/np array
-
 ## Install
 
-```bash
-pip install -r requirements.txt
-```
-
-## Training
-
-### Binary
-Example: treat `explicit` as positive.
+From the repo folder:
 
 ```bash
-python train.py   --data labeled_embeddings.parquet   --mode binary   --label-col label   --bucket-col sample_bucket   --embedding-prefix emb_   --positive explicit   --target-precision 0.80   --cal-method isotonic   --anchor-split stratified   --anchor-cal-frac 0.5   --out nudity_binary.pkl
+pip install -e .
 ```
 
-### Multiclass (mutually exclusive)
-OvR calibrated models.
+If you want Parquet support:
 
 ```bash
-python train.py   --data labeled_embeddings.parquet   --mode multiclass   --label-col label   --bucket-col sample_bucket   --embedding-prefix emb_   --cal-method isotonic   --anchor-split stratified   --anchor-cal-frac 0.5   --out nudity_multiclass.pkl
+pip install -e ".[parquet]"
 ```
 
-Optional: compute per-class thresholds for a target precision (on anchor-cal):
+## Data contract
 
-```bash
-python train.py   --data labeled_embeddings.parquet   --mode multiclass   --label-col label   --bucket-col sample_bucket   --embedding-prefix emb_   --cal-method isotonic   --target-precision 0.90   --out nudity_multiclass.pkl
+Your dataset should include:
+- `label` (string class; mutually exclusive)
+- `sample_bucket` (e.g., `anchor_unbiased`, `mined_keywords`, `diversity_long_tail`)
+- embeddings:
+  - Option A (recommended): wide columns `emb_0..emb_d` with a common prefix (default: `emb_`)
+  - Option B: a single column `embedding` containing list/np array
+
+Optional columns are kept as metadata and can be preserved in inference outputs:
+- `match_reason`, `target_root`, `orig_image_url`, etc.
+
+Input formats:
+- **CSV** is always supported
+- **Parquet** supported if you install the `parquet` extra
+
+## Library usage
+
+### Train (binary)
+
+```python
+import pandas as pd
+from brandsafety import train_artifact
+
+df = pd.read_csv("labeled_embeddings.csv")
+
+artifact = train_artifact(
+    df,
+    mode = "binary",
+    label_col = "label",
+    bucket_col = "sample_bucket",
+    embedding_prefix = "emb_",
+    positive_classes = ["explicit"],   # binary mode only
+    cal_method = "isotonic",
+    target_precision = 0.80,
+    anchor_split = "stratified",
+    anchor_cal_frac = 0.5,
+    seed = 42,
+)
+
+artifact.save("nudity_binary.pkl")   # deployment artifact
 ```
 
-## Inference
+### Train (multiclass OvR)
 
-```bash
-python infer.py   --model nudity_multiclass.pkl   --data new_embeddings.parquet   --embedding-prefix emb_   --out scored.parquet
+```python
+from brandsafety import train_artifact
+
+artifact = train_artifact(
+    df,
+    mode = "multiclass",
+    label_col = "label",
+    bucket_col = "sample_bucket",
+    embedding_prefix = "emb_",
+    cal_method = "isotonic",
+    # optional per-class thresholds (computed on anchor-cal)
+    per_class_target_precision = 0.90,
+)
+
+artifact.save("nudity_multiclass.pkl")
 ```
 
-Outputs:
-- Binary: `p_hat`, and `yhat` if threshold exists in the artifact.
-- Multiclass: `prob_<class>` for each class and `pred_label` (argmax).
+### Inference
 
-## Methodology
+```python
+import pandas as pd
+from brandsafety import load_artifact
+
+artifact = load_artifact("nudity_multiclass.pkl")
+
+df_new = pd.read_csv("new_embeddings.csv")
+scored = artifact.predict_df(df_new, embedding_prefix = "emb_")
+
+# scored contains:
+# - binary: p_hat (+ yhat if threshold stored)
+# - multiclass: prob_<class> columns + pred_label
+scored.to_parquet("scored.parquet", index = False)
+```
+
+## Notes on methodology
 
 - Train pool: `mined_keywords + diversity_long_tail`
-- Calibration set: `anchor_unbiased` split into cal/test
+- Calibration: `anchor_unbiased` split into cal/test
 - Threshold selection: on **anchor-cal**
-- Metrics: reported on **anchor-test**
+- Reporting: metrics on **anchor-test**
 
