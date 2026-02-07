@@ -1,0 +1,34 @@
+import os
+import numpy as np
+import pandas as pd
+
+def load_table(path):
+    ext = os.path.splitext(path)[1].lower()
+    if ext in [".parquet", ".pq"]:
+        return pd.read_parquet(path)
+    if ext == ".csv":
+        return pd.read_csv(path)
+    raise ValueError(f"Unsupported file extension: {ext}. Use .parquet or .csv")
+
+def extract_embeddings(df, *, embedding_prefix = None, embedding_col = None):
+    if embedding_col is not None:
+        if embedding_col not in df.columns:
+            raise ValueError(f"embedding_col='{embedding_col}' not found in df")
+        arrs = df[embedding_col].values
+        X = np.vstack([np.asarray(a, dtype = np.float32) for a in arrs])
+        return X
+
+    if embedding_prefix is None:
+        raise ValueError("Provide embedding_prefix (for wide cols) or embedding_col (for list/array col).")
+
+    cols = [c for c in df.columns if str(c).startswith(embedding_prefix)]
+    if not cols:
+        raise ValueError(f"No embedding columns found with prefix='{embedding_prefix}'")
+
+    def _col_key(c):
+        tail = str(c)[len(embedding_prefix):]
+        return int(tail) if tail.isdigit() else tail
+
+    cols_sorted = sorted(cols, key = _col_key)
+    X = df[cols_sorted].values.astype(np.float32, copy = False)
+    return X
