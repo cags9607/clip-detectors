@@ -1,22 +1,22 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "brandsafety-svm"
+name = "deepsee-legacy-svm"
 version = "0.1.0"
-description = "Minimal SVM+calibration training & inference for brand-safety classifiers from precomputed embeddings."
+description = "Legacy-compatible LinearSVC + isotonic calibration trainers (binary + multiclass) that export raw sklearn .pkl estimators."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-  "numpy>=1.24",
+  "numpy>=1.23",
   "pandas>=2.0",
-  "scikit-learn>=1.3",
-  "joblib>=1.3"
+  "scikit-learn>=1.2",
+  "joblib>=1.2",
 ]
 
-[project.optional-dependencies]
-parquet = ["pyarrow>=14.0"]
-
 [tool.setuptools]
-packages = ["brandsafety"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
