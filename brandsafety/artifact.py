@@ -42,8 +42,32 @@ class Artifact:
             return {"probs": probs, "classes": classes}
         raise ValueError(f"Unknown task: {task}")
 
+
 def load_artifact(path: str) -> Artifact:
-    return Artifact(obj = _load(path))
+    obj = _load(path)
+
+    # Legacy .pkl compatibility:
+    # If the file contains a raw sklearn estimator (CalibratedClassifierCV / Pipeline / etc),
+    # wrap it into an Artifact-shaped dict on load.
+    if not isinstance(obj, dict):
+        model = obj
+        classes = list(getattr(model, "classes_", []))
+
+        # infer task from number of classes
+        task = "multiclass" if len(classes) > 2 else "binary"
+
+        wrapped = {
+            "task": task,
+            "model": model,
+        }
+
+        # keep "classes" for multiclass convenience
+        if classes:
+            wrapped["classes"] = [str(c) for c in classes]
+
+        return Artifact(obj = wrapped)
+
+    return Artifact(obj = obj)
 
 def predict_embeddings(artifact: Artifact, emb: np.ndarray) -> Dict[str, Any]:
     return artifact.predict_proba(emb)
