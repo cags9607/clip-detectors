@@ -1,46 +1,108 @@
-# deepsee-legacy-svm
+# brandsafety-svm
 
-This repo exports **legacy-compatible** `.pkl` files for your current pipeline.
+A tiny **Python package** (pip-installable) to train and run brand-safety image classifiers using **precomputed embeddings** with an **SVM + probability calibration** pipeline.
 
-- Binary and multiclass LinearSVC
-- Isotonic calibration (`CalibratedClassifierCV(cv="prefit")`)
-- **The saved .pkl is the raw sklearn estimator** (no dicts, no wrappers)
+Supports:
+- **Binary** training (unsafe vs safe), with a stored threshold for a target precision.
+- **Multiclass (mutually exclusive)** training via **One-vs-Rest (OvR)** calibrated models.
 
 ## Install
+
+From the repo folder:
 
 ```bash
 pip install -e .
 ```
 
-## Binary
+If you want Parquet support:
 
-```python
-from deepsee_legacy_svm import train_binary_legacy
-model, metrics = train_binary_legacy(
-    X_train, y_train,
-    X_cal, y_cal,
-    X_test, y_test,
-    out_pkl_path="svm_calibrated_binary.pkl",
-)
+```bash
+pip install -e ".[parquet]"
 ```
 
-## Multiclass
+## Data contract
 
-Encode labels externally (same as your notebook):
+Your dataset should include:
+- `label` (string class; mutually exclusive)
+- `sample_bucket` (e.g., `anchor_unbiased`, `mined_keywords`, `diversity_long_tail`)
+- embeddings:
+  - Option A (recommended): wide columns `emb_0..emb_d` with a common prefix (default: `emb_`)
+  - Option B: a single column `embedding` containing list/np array
+
+Optional columns are kept as metadata and can be preserved in inference outputs:
+- `match_reason`, `target_root`, `orig_image_url`, etc.
+
+Input formats:
+- **CSV** is always supported
+- **Parquet** supported if you install the `parquet` extra
+
+## Library usage
+
+### Train (binary)
 
 ```python
-from sklearn.preprocessing import LabelEncoder
-from deepsee_legacy_svm import train_multiclass_legacy
+import pandas as pd
+from brandsafety import train_artifact
 
-le = LabelEncoder()
-y_train_enc = le.fit_transform(y_train_raw)
-y_cal_enc   = le.transform(y_cal_raw)
-y_test_enc  = le.transform(y_test_raw)
+df = pd.read_csv("labeled_embeddings.csv")
 
-model, metrics = train_multiclass_legacy(
-    X_train, y_train_enc,
-    X_cal, y_cal_enc,
-    X_test, y_test_enc,
-    out_pkl_path="svm_calibrated_multiclass.pkl",
+artifact = train_artifact(
+    df,
+    mode = "binary",
+    label_col = "label",
+    bucket_col = "sample_bucket",
+    embedding_prefix = "emb_",
+    positive_classes = ["explicit"],   # binary mode only
+    cal_method = "isotonic",
+    target_precision = 0.80,
+    anchor_split = "stratified",
+    anchor_cal_frac = 0.5,
+    seed = 42,
 )
+
+artifact.save("nudity_binary.pkl")   # deployment artifact
 ```
+
+### Train (multiclass OvR)
+
+```python
+from brandsafety import train_artifact
+
+artifact = train_artifact(
+    df,
+    mode = "multiclass",
+    label_col = "label",
+    bucket_col = "sample_bucket",
+    embedding_prefix = "emb_",
+    cal_method = "isotonic",
+    # optional per-class thresholds (computed on anchor-cal)
+    per_class_target_precision = 0.90,
+)
+
+artifact.save("nudity_multiclass.pkl")
+```
+
+### Inference
+
+```python
+import pandas as pd
+from brandsafety import load_artifact
+
+artifact = load_artifact("nudity_multiclass.pkl")
+
+df_new = pd.read_csv("new_embeddings.csv")
+scored = artifact.predict_df(df_new, embedding_prefix = "emb_")
+
+# scored contains:
+# - binary: p_hat (+ yhat if threshold stored)
+# - multiclass: prob_<class> columns + pred_label
+scored.to_parquet("scored.parquet", index = False)
+```
+
+## Notes on methodology
+
+- Train pool: `mined_keywords + diversity_long_tail`
+- Calibration: `anchor_unbiased` split into cal/test
+- Threshold selection: on **anchor-cal**
+- Reporting: metrics on **anchor-test**
+
