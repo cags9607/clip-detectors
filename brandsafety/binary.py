@@ -68,7 +68,7 @@ def train_binary(
         y_cal, p_cal, target_precision = target_precision, prefer = prefer
     )
 
-    yhat_test = (p_test >= thr).astype(int)
+    yhat_test = (p_test >= 0.5).astype(int) # use thr instead of 0.5 for target precision
     tn, fp, fn, tp = confusion_matrix(y_test, yhat_test).ravel()
     fpr = fp / (fp + tn + 1e-12)
 
