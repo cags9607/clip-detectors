@@ -17,15 +17,42 @@ def split_by_bucket(
     if label_col not in df.columns:
         raise ValueError(f"label_col='{label_col}' not found in df")
 
+    anchor_cal_frac = float(anchor_cal_frac)
+    if not (0.0 <= anchor_cal_frac <= 1.0):
+        raise ValueError("anchor_cal_frac must be in [0.0, 1.0]")
+
     df_anchor = df[df[bucket_col] == anchor_value].copy()
     df_trainp = df[df[bucket_col].isin(train_values)].copy()
 
-    if df_anchor.shape[0] < 200:
-        raise ValueError(f"Anchor set too small for cal/test: n={df_anchor.shape[0]}")
+    if df_anchor.shape[0] < 1:
+        raise ValueError(f"Anchor set is empty: n={df_anchor.shape[0]}")
+    if df_trainp.shape[0] < 1:
+        raise ValueError(f"Train pool is empty: n={df_trainp.shape[0]}")
+
+    if 0.0 < anchor_cal_frac < 1.0 and df_anchor.shape[0] < 200:
+        raise ValueError(f"Anchor set too small for cal/test split: n={df_anchor.shape[0]}")
     if df_trainp.shape[0] < 200:
         raise ValueError(f"Train pool too small: n={df_trainp.shape[0]}")
 
     y_anchor = df_anchor[label_col].astype(str).values
+
+    if anchor_cal_frac == 0.0:
+        df_cal = df_anchor.iloc[0:0].copy()
+        df_test = df_anchor.copy()
+        return (
+            df_trainp.reset_index(drop = True),
+            df_cal.reset_index(drop = True),
+            df_test.reset_index(drop = True),
+        )
+
+    if anchor_cal_frac == 1.0:
+        df_cal = df_anchor.copy()
+        df_test = df_anchor.iloc[0:0].copy()
+        return (
+            df_trainp.reset_index(drop = True),
+            df_cal.reset_index(drop = True),
+            df_test.reset_index(drop = True),
+        )
 
     if anchor_split == "stratified":
         df_cal, df_test = train_test_split(

@@ -57,8 +57,13 @@ def train_artifact(
     )
 
     X_train = extract_embeddings(df_train, embedding_prefix = embedding_prefix, embedding_col = embedding_col)
-    X_cal   = extract_embeddings(df_cal,   embedding_prefix = embedding_prefix, embedding_col = embedding_col)
-    X_test  = extract_embeddings(df_test,  embedding_prefix = embedding_prefix, embedding_col = embedding_col)
+
+    if len(df_cal) > 0:
+        X_cal = extract_embeddings(df_cal, embedding_prefix = embedding_prefix, embedding_col = embedding_col)
+    else:
+        X_cal = np.empty((0, X_train.shape[1]), dtype = np.float32)
+
+    X_test = extract_embeddings(df_test, embedding_prefix = embedding_prefix, embedding_col = embedding_col)
 
     y_train = df_train[label_col].astype(str).values
     y_cal   = df_cal[label_col].astype(str).values

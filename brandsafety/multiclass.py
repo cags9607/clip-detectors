@@ -80,12 +80,23 @@ def train_multiclass_ovr(
     )
     base_pipe.fit(Xtr, y_train)
 
-    calibrated = CalibratedClassifierCV(
-        base_pipe,
-        method = cal_method,
-        cv = "prefit"
-    )
-    calibrated.fit(Xca, y_cal)
+    has_cal = (X_cal is not None) and (y_cal is not None) and (len(y_cal) > 0)
+
+    if has_cal:
+        calibrated = CalibratedClassifierCV(
+            base_pipe,
+            method = cal_method,
+            cv = "prefit"
+        )
+        calibrated.fit(Xca, y_cal)
+    else:
+        # No external calibration data: calibrate via internal CV on TRAIN ONLY
+        calibrated = CalibratedClassifierCV(
+            make_pipeline(LinearSVC(C = best_C, random_state = seed, multi_class = "ovr")),
+            method = cal_method,
+            cv = 5
+        )
+        calibrated.fit(Xtr, y_train)
 
     # test eval
     probs = calibrated.predict_proba(Xte)
@@ -95,6 +106,9 @@ def train_multiclass_ovr(
         "best_C": float(best_C),
         "cv_scores_acc": {str(k): float(v) for k, v in cv_scores.items()},
         "cal_method": str(cal_method),
+        "n_train": int(len(y_train)),
+        "n_cal": int(len(y_cal)) if has_cal else 0,
+        "n_test": int(len(y_test)),
         "test_accuracy": float(accuracy_score(y_test, y_pred)),
         "test_precision_macro": float(precision_score(y_test, y_pred, average = "macro", zero_division = 0)),
         "test_recall_macro": float(recall_score(y_test, y_pred, average = "macro", zero_division = 0)),
