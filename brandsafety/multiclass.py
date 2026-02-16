@@ -65,6 +65,9 @@ def train_multiclass_ovr(
     y_cal   = np.asarray(y_cal_str)
     y_test  = np.asarray(y_test_str)
 
+    # IMPORTANT: `classes` is the *global* label universe you want the model to support.
+    # We keep it stable across splits so downstream metrics (e.g., log_loss) can be computed
+    # even if some classes are absent in y_test (common when anchor_cal_frac = 0.0).
     if classes is None:
         classes = sorted(list(set(y_train.tolist()) | set(y_cal.tolist()) | set(y_test.tolist())))
 
@@ -80,7 +83,10 @@ def train_multiclass_ovr(
     )
     base_pipe.fit(Xtr, y_train)
 
-    has_cal = (X_cal is not None) and (y_cal is not None) and (len(y_cal) > 0)
+    # Calibration strategy:
+    # - If we have external calibration data (anchor_cal_frac > 0), use cv='prefit' on (X_cal, y_cal).
+    # - If no calibration data (anchor_cal_frac = 0.0), calibrate on TRAIN ONLY using internal CV.
+    has_cal = (y_cal is not None) and (len(y_cal) > 0) and (Xca is not None) and (Xca.shape[0] > 0)
 
     if has_cal:
         calibrated = CalibratedClassifierCV(
@@ -90,9 +96,8 @@ def train_multiclass_ovr(
         )
         calibrated.fit(Xca, y_cal)
     else:
-        # No external calibration data: calibrate via internal CV on TRAIN ONLY
         calibrated = CalibratedClassifierCV(
-            make_pipeline(LinearSVC(C = best_C, random_state = seed, multi_class = "ovr")),
+            base_pipe,
             method = cal_method,
             cv = 5
         )
@@ -106,14 +111,13 @@ def train_multiclass_ovr(
         "best_C": float(best_C),
         "cv_scores_acc": {str(k): float(v) for k, v in cv_scores.items()},
         "cal_method": str(cal_method),
-        "n_train": int(len(y_train)),
-        "n_cal": int(len(y_cal)) if has_cal else 0,
-        "n_test": int(len(y_test)),
         "test_accuracy": float(accuracy_score(y_test, y_pred)),
         "test_precision_macro": float(precision_score(y_test, y_pred, average = "macro", zero_division = 0)),
         "test_recall_macro": float(recall_score(y_test, y_pred, average = "macro", zero_division = 0)),
         "test_f1_macro": float(f1_score(y_test, y_pred, average = "macro", zero_division = 0)),
-        "test_log_loss": float(log_loss(y_test, probs)),
+        # `labels=` is REQUIRED when some classes are missing in y_test
+        # (otherwise sklearn raises: y_true and y_pred contain different number of classes).
+        "test_log_loss": float(log_loss(y_test, probs, labels = calibrated.classes_)),
     }
 
     if verbose:
