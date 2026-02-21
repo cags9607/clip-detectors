@@ -79,6 +79,7 @@ def train_binary(
         thr, P_cal, R_cal, F1_cal, how = threshold_for_precision(
             y_cal, p_cal, target_precision = target_precision, prefer = prefer
         )
+        thr = 0.5 # Default to 0.5 just use calibration to produce scores 
     else:
         thr = 0.5
         P_cal, R_cal, F1_cal = float("nan"), float("nan"), float("nan")
